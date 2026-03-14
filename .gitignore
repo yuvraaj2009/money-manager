@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.env
+database.db
+backend/database.db
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.idea/
+.vscode/
+build/

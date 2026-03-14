@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: money-manager-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: API_VERSION
+        value: 1.0.0
+      - key: DATABASE_URL
+        sync: false
