@@ -58,7 +58,10 @@ def upgrade() -> None:
     # ── Add user_id to categories (nullable first, then backfill) ────
     # Drop the old unique constraint on name so it can be per-user
     with op.batch_alter_table("categories") as batch_op:
-        batch_op.drop_constraint("uq_user_category_name", type_="unique")  # may not exist, handled below
+        try:
+            batch_op.drop_constraint("uq_user_category_name", type_="unique")
+        except Exception:
+            pass
     op.add_column("categories", sa.Column("user_id", sa.String(64), nullable=True))
     op.execute("UPDATE categories SET user_id = 'USR-SYSTEM0000'")
     with op.batch_alter_table("categories") as batch_op:
@@ -106,7 +109,10 @@ def upgrade() -> None:
         batch_op.alter_column("user_id", nullable=False)
         batch_op.create_index("ix_budget_history_user_id", ["user_id"])
         batch_op.create_foreign_key("fk_budget_history_user", "users", ["user_id"], ["id"])
-        batch_op.drop_constraint("uq_budget_month_year", type_="unique")
+        try:
+            batch_op.drop_constraint("uq_budget_month_year", type_="unique")
+        except Exception:
+            pass
         batch_op.create_unique_constraint(
             "uq_user_budget_month_year",
             ["user_id", "category_id", "month", "year"],
