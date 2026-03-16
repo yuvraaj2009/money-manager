@@ -85,7 +85,7 @@ class Settings(BaseModel):
         default_factory=lambda: os.getenv("MIN_APP_VERSION", "1.0.0")
     )
     latest_app_version: str = Field(
-        default_factory=lambda: os.getenv("LATEST_APP_VERSION", "1.0.0")
+        default_factory=lambda: os.getenv("LATEST_APP_VERSION", "1.0.1")
     )
     update_url: str = Field(
         default_factory=lambda: os.getenv("UPDATE_URL", "")
