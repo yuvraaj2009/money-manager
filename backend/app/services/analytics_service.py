@@ -47,18 +47,19 @@ def _month_range(target: date) -> tuple[date, date]:
 
 
 def _sum_spending(transactions) -> int:
-    return sum(abs(transaction.amount) for transaction in transactions if transaction.amount < 0)
+    return sum(abs(t.amount) for t in transactions if t.amount < 0)
 
 
 def _sum_income(transactions) -> int:
-    return sum(transaction.amount for transaction in transactions if transaction.amount > 0)
+    return sum(t.amount for t in transactions if t.amount > 0)
 
 
 def get_budget_exceeded_alerts(
-    session: Session, target: date | None = None
+    session: Session, user_id: str, target: date | None = None
 ) -> list[BudgetAlert]:
+    """Return budget alerts for categories at caution or exceeded status."""
     focus_date = target or _utc_today()
-    budgets = list_budgets(session, month=focus_date.month, year=focus_date.year)
+    budgets = list_budgets(session, user_id, month=focus_date.month, year=focus_date.year)
     alerts: list[BudgetAlert] = []
     for budget in budgets:
         if budget.status == "safe":
@@ -77,25 +78,27 @@ def get_budget_exceeded_alerts(
     return alerts
 
 
-def get_weekly_burn_rate(session: Session, target: date | None = None) -> int:
+def get_weekly_burn_rate(session: Session, user_id: str, target: date | None = None) -> int:
+    """Calculate average daily spending over the past 7 days, in paise."""
     focus_date = target or _utc_today()
     start = focus_date - timedelta(days=6)
-    transactions = fetch_transactions_for_range(session, start, focus_date)
+    transactions = fetch_transactions_for_range(session, start, focus_date, user_id)
     total_spending = _sum_spending(transactions)
     return round(total_spending / 7) if total_spending else 0
 
 
 def get_monthly_summary(
-    session: Session, month: int | None = None, year: int | None = None
+    session: Session, user_id: str, month: int | None = None, year: int | None = None
 ) -> MonthlySummaryResponse:
+    """Aggregate income, spending, alerts, and insight for a single month."""
     today = _utc_today()
     focus_date = date(year or today.year, month or today.month, 1)
     start, end = _month_range(focus_date)
-    transactions = fetch_transactions_for_range(session, start, end)
+    transactions = fetch_transactions_for_range(session, start, end, user_id)
     total_spending = _sum_spending(transactions)
     total_income = _sum_income(transactions)
-    budget_alerts = get_budget_exceeded_alerts(session, focus_date)
-    category_totals = get_category_totals(session, month=focus_date.month, year=focus_date.year)
+    budget_alerts = get_budget_exceeded_alerts(session, user_id, focus_date)
+    category_totals = get_category_totals(session, user_id, month=focus_date.month, year=focus_date.year)
     top_category = category_totals[0].name if category_totals else "discretionary"
     insight = (
         f"{top_category} is your highest spend area this month. "
@@ -108,17 +111,18 @@ def get_monthly_summary(
         total_income=total_income,
         net_cash_flow=total_income - total_spending,
         transaction_count=len(transactions),
-        weekly_burn_rate=get_weekly_burn_rate(session, today),
+        weekly_burn_rate=get_weekly_burn_rate(session, user_id, today),
         budget_alert_count=len(budget_alerts),
         insight=insight,
     )
 
 
 def get_analytics_summary(
-    session: Session, month: int | None = None, year: int | None = None
+    session: Session, user_id: str, month: int | None = None, year: int | None = None
 ) -> AnalyticsSummaryResponse:
-    summary = get_monthly_summary(session, month=month, year=year)
-    categories = get_category_totals(session, month=summary.month, year=summary.year)
+    """Return the full analytics summary including top category and insight."""
+    summary = get_monthly_summary(session, user_id, month=month, year=year)
+    categories = get_category_totals(session, user_id, month=summary.month, year=summary.year)
     top_category = categories[0].name if categories else "Other"
     return AnalyticsSummaryResponse(
         month=summary.month,
@@ -135,13 +139,16 @@ def get_analytics_summary(
     )
 
 
-def get_yearly_summary(session: Session, year: int | None = None) -> YearSummaryResponse:
+def get_yearly_summary(
+    session: Session, user_id: str, year: int | None = None
+) -> YearSummaryResponse:
+    """Aggregate spending/income across all 12 months for the given year."""
     target_year = year or _utc_today().year
     monthly_breakdown: list[TrendPointResponse] = []
     for month_index in range(1, 13):
         start = date(target_year, month_index, 1)
         _, end = _month_range(start)
-        transactions = fetch_transactions_for_range(session, start, end)
+        transactions = fetch_transactions_for_range(session, start, end, user_id)
         spending = _sum_spending(transactions)
         income = _sum_income(transactions)
         monthly_breakdown.append(
@@ -154,8 +161,8 @@ def get_yearly_summary(session: Session, year: int | None = None) -> YearSummary
             )
         )
 
-    total_spending = sum(point.total_spending for point in monthly_breakdown)
-    total_income = sum(point.total_income for point in monthly_breakdown)
+    total_spending = sum(p.total_spending for p in monthly_breakdown)
+    total_income = sum(p.total_income for p in monthly_breakdown)
     return YearSummaryResponse(
         year=target_year,
         total_spending=total_spending,
@@ -167,12 +174,13 @@ def get_yearly_summary(session: Session, year: int | None = None) -> YearSummary
 
 
 def get_category_totals(
-    session: Session, month: int | None = None, year: int | None = None
+    session: Session, user_id: str, month: int | None = None, year: int | None = None
 ) -> list[CategoryTotalResponse]:
+    """Return per-category spending totals sorted by amount descending."""
     today = _utc_today()
     focus_date = date(year or today.year, month or today.month, 1)
     start, end = _month_range(focus_date)
-    transactions = fetch_transactions_for_range(session, start, end)
+    transactions = fetch_transactions_for_range(session, start, end, user_id)
     totals: dict[str, dict[str, object]] = {}
     total_spending = _sum_spending(transactions)
 
@@ -208,13 +216,17 @@ def get_category_totals(
     return response
 
 
-def get_trends(session: Session, year: int | None = None) -> list[TrendPointResponse]:
-    return get_yearly_summary(session, year=year).monthly_breakdown
+def get_trends(
+    session: Session, user_id: str, year: int | None = None
+) -> list[TrendPointResponse]:
+    """Return monthly trend data points for the given year."""
+    return get_yearly_summary(session, user_id, year=year).monthly_breakdown
 
 
 def get_top_merchants(
-    session: Session, month: int | None = None, year: int | None = None, limit: int = 5
+    session: Session, user_id: str, month: int | None = None, year: int | None = None, limit: int = 5
 ) -> list[MerchantSpendingResponse]:
+    """Return top merchants by spending with month-over-month trend labels."""
     today = _utc_today()
     focus_date = date(year or today.year, month or today.month, 1)
     previous_month = date(
@@ -224,8 +236,8 @@ def get_top_merchants(
     )
     current_start, current_end = _month_range(focus_date)
     prev_start, prev_end = _month_range(previous_month)
-    current_transactions = fetch_transactions_for_range(session, current_start, current_end)
-    previous_transactions = fetch_transactions_for_range(session, prev_start, prev_end)
+    current_transactions = fetch_transactions_for_range(session, current_start, current_end, user_id)
+    previous_transactions = fetch_transactions_for_range(session, prev_start, prev_end, user_id)
 
     current_totals: dict[str, dict[str, int]] = defaultdict(lambda: {"total": 0, "count": 0})
     previous_totals: dict[str, int] = defaultdict(int)
@@ -271,15 +283,16 @@ def get_top_merchants(
 
 
 def get_efficiency_score(
-    session: Session, month: int | None = None, year: int | None = None
+    session: Session, user_id: str, month: int | None = None, year: int | None = None
 ) -> EfficiencyScoreResponse:
+    """Compute an efficiency score (18-99) comparing actual spending to household baselines."""
     today = _utc_today()
     focus_date = date(year or today.year, month or today.month, 1)
     start, end = _month_range(focus_date)
-    transactions = fetch_transactions_for_range(session, start, end)
+    transactions = fetch_transactions_for_range(session, start, end, user_id)
     actual_spending = _sum_spending(transactions)
     household_average = sum(HOUSEHOLD_AVERAGES.values())
-    alerts = get_budget_exceeded_alerts(session, focus_date)
+    alerts = get_budget_exceeded_alerts(session, user_id, focus_date)
 
     if household_average == 0:
         delta_percentage = 0.0
@@ -312,11 +325,12 @@ def get_efficiency_score(
 
 
 def get_budget_utilization(
-    session: Session, month: int | None = None, year: int | None = None
+    session: Session, user_id: str, month: int | None = None, year: int | None = None
 ) -> BudgetUtilizationResponse:
+    """Return overall budget utilization with daily spend bars and alerts."""
     today = _utc_today()
     focus_date = date(year or today.year, month or today.month, 1)
-    budgets = list_budgets(session, month=focus_date.month, year=focus_date.year)
+    budgets = list_budgets(session, user_id, month=focus_date.month, year=focus_date.year)
     total_budget = sum(budget.monthly_limit for budget in budgets)
     total_spent = sum(budget.spent_amount for budget in budgets)
     utilization = round((total_spent / total_budget) * 100, 1) if total_budget else 0.0
@@ -324,7 +338,7 @@ def get_budget_utilization(
     bars: list[DailySpendBar] = []
     for offset in range(6, -1, -1):
         current_day = today - timedelta(days=offset)
-        transactions = fetch_transactions_for_range(session, current_day, current_day)
+        transactions = fetch_transactions_for_range(session, current_day, current_day, user_id)
         bars.append(
             DailySpendBar(
                 label=current_day.strftime("%a"),
@@ -339,7 +353,7 @@ def get_budget_utilization(
         total_budget=total_budget,
         total_spent=total_spent,
         utilization_percentage=utilization,
-        alerts=get_budget_exceeded_alerts(session, focus_date),
+        alerts=get_budget_exceeded_alerts(session, user_id, focus_date),
         budgets=budgets,
         daily_spend=bars,
     )

@@ -49,9 +49,20 @@ class _BudgetScreenState extends State<BudgetScreen> {
 
   Future<void> _load() async {
     setState(() {
-      _loading = true;
+      _loading = _bundle == null;
       _error = null;
     });
+
+    if (_bundle == null) {
+      final cached = await widget.repository.loadBudgetDataFromCache();
+      if (cached != null && mounted) {
+        setState(() {
+          _bundle = cached;
+          _loading = false;
+        });
+      }
+    }
+
     try {
       final bundle = await widget.repository.loadBudgetData();
       if (!mounted) return;
@@ -66,10 +77,12 @@ class _BudgetScreenState extends State<BudgetScreen> {
       );
     } catch (error) {
       if (!mounted) return;
-      setState(() {
-        _error = error;
-        _loading = false;
-      });
+      if (_bundle == null) {
+        setState(() {
+          _error = error;
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -365,11 +378,15 @@ class _BudgetListCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text(
-                'Spending Categories',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
+              Flexible(
+                child: Text(
+                  'Spending Categories',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
               ),
               const Spacer(),
               Container(
@@ -453,34 +470,38 @@ class _BudgetListCard extends StatelessWidget {
                             ],
                           ),
                         ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              '${AppFormatters.currencyFromPaise(budget.spentAmount)} / ${AppFormatters.currencyFromPaise(budget.monthlyLimit)}',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleMedium
-                                  ?.copyWith(
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              budget.status.toUpperCase(),
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .labelSmall
-                                  ?.copyWith(
-                                    color: budget.status == 'safe'
-                                        ? AppColors.secondary
-                                        : budget.status == 'caution'
-                                            ? AppColors.primary
-                                            : AppColors.tertiary,
-                                    letterSpacing: 1.4,
-                                  ),
-                            ),
-                          ],
+                        Flexible(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                '${AppFormatters.currencyFromPaise(budget.spentAmount)} / ${AppFormatters.currencyFromPaise(budget.monthlyLimit)}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleMedium
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                budget.status.toUpperCase(),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .labelSmall
+                                    ?.copyWith(
+                                      color: budget.status == 'safe'
+                                          ? AppColors.secondary
+                                          : budget.status == 'caution'
+                                              ? AppColors.primary
+                                              : AppColors.tertiary,
+                                      letterSpacing: 1.4,
+                                    ),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
@@ -533,12 +554,16 @@ class _SavingsCard extends StatelessWidget {
                 ),
           ),
           const SizedBox(height: 10),
-          Text(
-            AppFormatters.currencyFromPaise(summary.netCashFlow),
-            style: Theme.of(context).textTheme.displayMedium?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                ),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              AppFormatters.currencyFromPaise(summary.netCashFlow),
+              style: Theme.of(context).textTheme.displayMedium?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                  ),
+            ),
           ),
           const SizedBox(height: 28),
           Row(

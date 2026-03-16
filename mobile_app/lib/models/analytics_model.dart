@@ -48,6 +48,20 @@
       insight: (json['insight'] as String?) ?? 'Summary available for this period.',
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'month': month,
+        'year': year,
+        'monthly_total': monthlyTotal,
+        'total_spending': totalSpending,
+        'total_income': totalIncome,
+        'net_cash_flow': netCashFlow,
+        'transaction_count': transactionCount,
+        'weekly_burn_rate': weeklyBurnRate,
+        'budget_alert_count': budgetAlertCount,
+        'top_category': topCategory,
+        'insight': insight,
+      };
 }
 
 class TrendPointModel {
@@ -74,6 +88,14 @@ class TrendPointModel {
       netFlow: (json['net_flow'] as num?)?.toInt() ?? 0,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'month': month,
+        'label': label,
+        'total_spending': totalSpending,
+        'total_income': totalIncome,
+        'net_flow': netFlow,
+      };
 }
 
 class YearSummaryModel {
@@ -105,6 +127,15 @@ class YearSummaryModel {
           .toList(),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'year': year,
+        'total_spending': totalSpending,
+        'total_income': totalIncome,
+        'net_cash_flow': netCashFlow,
+        'average_monthly_spending': averageMonthlySpending,
+        'monthly_breakdown': monthlyBreakdown.map((t) => t.toJson()).toList(),
+      };
 }
 
 class CategoryAnalyticsModel {
@@ -134,6 +165,15 @@ class CategoryAnalyticsModel {
       percentage: (json['percentage'] as num?)?.toDouble() ?? 0,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'category_id': categoryId,
+        'name': name,
+        'color': color,
+        'icon': icon,
+        'total_amount': totalAmount,
+        'percentage': percentage,
+      };
 }
 
 typedef CategoryTotalModel = CategoryAnalyticsModel;
@@ -159,6 +199,13 @@ class MerchantSpendingModel {
       trendLabel: (json['trend_label'] as String?) ?? 'Flat',
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'merchant_name': merchantName,
+        'total_amount': totalAmount,
+        'transaction_count': transactionCount,
+        'trend_label': trendLabel,
+      };
 }
 
 class EfficiencyScoreModel {
@@ -185,4 +232,12 @@ class EfficiencyScoreModel {
       insight: (json['insight'] as String?) ?? 'Efficiency data unavailable.',
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'score': score,
+        'household_average': householdAverage,
+        'actual_spending': actualSpending,
+        'delta_percentage': deltaPercentage,
+        'insight': insight,
+      };
 }

@@ -20,8 +20,12 @@ from app.utils.id_generator import generate_id, generate_reference_id
 PAYMENT_METHODS = ["Cash", "Card", "UPI", "Wallet", "Auto-Pay", "Bank Transfer"]
 
 
-def _require_category(session: Session, category_id: str) -> Category:
-    category = session.get(Category, category_id)
+def _require_category(session: Session, category_id: str, user_id: str) -> Category:
+    """Return the category or raise 404."""
+    category = session.scalar(
+        select(Category)
+        .where(Category.id == category_id, Category.user_id == user_id)
+    )
     if category is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -30,8 +34,12 @@ def _require_category(session: Session, category_id: str) -> Category:
     return category
 
 
-def _require_account(session: Session, account_id: str) -> Account:
-    account = session.get(Account, account_id)
+def _require_account(session: Session, account_id: str, user_id: str) -> Account:
+    """Return the account or raise 404."""
+    account = session.scalar(
+        select(Account)
+        .where(Account.id == account_id, Account.user_id == user_id)
+    )
     if account is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -40,15 +48,18 @@ def _require_account(session: Session, account_id: str) -> Account:
     return account
 
 
-def _base_transaction_query():
+def _base_transaction_query(user_id: str):
+    """Build a base SELECT for transactions scoped to *user_id* with eager-loaded relations."""
     return (
         select(Transaction)
+        .where(Transaction.user_id == user_id)
         .options(selectinload(Transaction.category), selectinload(Transaction.account))
         .order_by(Transaction.date.desc(), Transaction.created_at.desc())
     )
 
 
 def serialize_transaction(transaction: Transaction) -> TransactionResponse:
+    """Convert a Transaction ORM object to its API response schema."""
     return TransactionResponse(
         id=transaction.id,
         amount=transaction.amount,
@@ -74,13 +85,17 @@ def serialize_transaction(transaction: Transaction) -> TransactionResponse:
     )
 
 
-def create_transaction(session: Session, payload: TransactionCreate) -> TransactionResponse:
-    _require_category(session, payload.category_id)
-    _require_account(session, payload.account_id)
+def create_transaction(
+    session: Session, payload: TransactionCreate, user_id: str
+) -> TransactionResponse:
+    """Create a new transaction for the given user."""
+    _require_category(session, payload.category_id, user_id)
+    _require_account(session, payload.account_id, user_id)
 
     transaction_date = payload.resolved_date
     transaction = Transaction(
         id=generate_id("TRX"),
+        user_id=user_id,
         amount=payload.amount,
         category_id=payload.category_id,
         description=payload.description.strip(),
@@ -97,24 +112,30 @@ def create_transaction(session: Session, payload: TransactionCreate) -> Transact
 
     from app.crud.budget_crud import refresh_budget_history
 
-    refresh_budget_history(session, month=transaction_date.month, year=transaction_date.year)
+    refresh_budget_history(session, user_id, month=transaction_date.month, year=transaction_date.year)
     transaction = session.scalar(
-        _base_transaction_query().where(Transaction.id == transaction.id)
+        _base_transaction_query(user_id).where(Transaction.id == transaction.id)
     )
     return serialize_transaction(transaction)
 
 
-def list_transactions(session: Session, limit: int | None = None) -> list[TransactionResponse]:
-    query = _base_transaction_query()
+def list_transactions(
+    session: Session, user_id: str, limit: int | None = None
+) -> list[TransactionResponse]:
+    """List all transactions for the given user."""
+    query = _base_transaction_query(user_id)
     if limit is not None:
         query = query.limit(limit)
     transactions = session.scalars(query).all()
-    return [serialize_transaction(transaction) for transaction in transactions]
+    return [serialize_transaction(t) for t in transactions]
 
 
-def get_transaction(session: Session, transaction_id: str) -> TransactionResponse:
+def get_transaction(
+    session: Session, transaction_id: str, user_id: str
+) -> TransactionResponse:
+    """Get a single transaction by ID, scoped to user."""
     transaction = session.scalar(
-        _base_transaction_query().where(Transaction.id == transaction_id)
+        _base_transaction_query(user_id).where(Transaction.id == transaction_id)
     )
     if transaction is None:
         raise HTTPException(
@@ -124,29 +145,41 @@ def get_transaction(session: Session, transaction_id: str) -> TransactionRespons
     return serialize_transaction(transaction)
 
 
-def list_categories(session: Session) -> list[CategoryOption]:
-    categories = session.scalars(select(Category).order_by(Category.name.asc())).all()
-    return [CategoryOption.model_validate(category) for category in categories]
+def list_categories(session: Session, user_id: str) -> list[CategoryOption]:
+    """Return all categories for *user_id*, ordered by name."""
+    categories = session.scalars(
+        select(Category)
+        .where(Category.user_id == user_id)
+        .order_by(Category.name.asc())
+    ).all()
+    return [CategoryOption.model_validate(c) for c in categories]
 
 
-def list_accounts(session: Session) -> list[AccountOption]:
-    accounts = session.scalars(select(Account).order_by(Account.name.asc())).all()
-    return [AccountOption.model_validate(account) for account in accounts]
+def list_accounts(session: Session, user_id: str) -> list[AccountOption]:
+    """Return all accounts for *user_id*, ordered by name."""
+    accounts = session.scalars(
+        select(Account)
+        .where(Account.user_id == user_id)
+        .order_by(Account.name.asc())
+    ).all()
+    return [AccountOption.model_validate(a) for a in accounts]
 
 
-def get_form_metadata(session: Session) -> TransactionFormMetadata:
+def get_form_metadata(session: Session, user_id: str) -> TransactionFormMetadata:
+    """Return categories, accounts, and payment methods for the transaction form."""
     return TransactionFormMetadata(
-        categories=list_categories(session),
-        accounts=list_accounts(session),
+        categories=list_categories(session, user_id),
+        accounts=list_accounts(session, user_id),
         payment_methods=PAYMENT_METHODS,
     )
 
 
 def fetch_transactions_for_range(
-    session: Session, start_date: date, end_date: date
+    session: Session, start_date: date, end_date: date, user_id: str
 ) -> list[Transaction]:
+    """Fetch raw Transaction ORM objects for a date range, scoped to user."""
     query = (
-        _base_transaction_query()
+        _base_transaction_query(user_id)
         .where(Transaction.date >= start_date)
         .where(Transaction.date <= end_date)
     )

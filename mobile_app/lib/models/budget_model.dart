@@ -42,6 +42,20 @@
       ),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'category_id': categoryId,
+        'category_name': categoryName,
+        'category_color': categoryColor,
+        'category_icon': categoryIcon,
+        'monthly_limit': monthlyLimit,
+        'spent_amount': spentAmount,
+        'remaining_amount': remainingAmount,
+        'utilization_percentage': utilizationPercentage,
+        'status': status,
+        'created_at': createdAt.toIso8601String(),
+      };
 }
 
 class BudgetAlertModel {
@@ -74,6 +88,16 @@ class BudgetAlertModel {
       severity: (json['severity'] as String?) ?? 'medium',
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'category_id': categoryId,
+        'category_name': categoryName,
+        'spent_amount': spentAmount,
+        'monthly_limit': monthlyLimit,
+        'over_amount': overAmount,
+        'utilization_percentage': utilizationPercentage,
+        'severity': severity,
+      };
 }
 
 class DailySpendBarModel {
@@ -94,6 +118,12 @@ class DailySpendBarModel {
       isToday: json['is_today'] as bool? ?? false,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'label': label,
+        'amount': amount,
+        'is_today': isToday,
+      };
 }
 
 class BudgetUtilizationModel {
@@ -135,4 +165,15 @@ class BudgetUtilizationModel {
           .toList(),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'month': month,
+        'year': year,
+        'total_budget': totalBudget,
+        'total_spent': totalSpent,
+        'utilization_percentage': utilizationPercentage,
+        'alerts': alerts.map((a) => a.toJson()).toList(),
+        'budgets': budgets.map((b) => b.toJson()).toList(),
+        'daily_spend': dailySpend.map((d) => d.toJson()).toList(),
+      };
 }

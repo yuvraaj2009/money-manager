@@ -5,8 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.database.models import Profile
 from app.schemas.profile_schema import ProfileCreate, ProfileResponse, ProfileUpdate
-
-DEFAULT_PROFILE_ID = "profile_primary"
+from app.utils.id_generator import generate_id
 
 
 def _build_profile_response(profile: Profile) -> ProfileResponse:
@@ -22,15 +21,19 @@ def _build_profile_response(profile: Profile) -> ProfileResponse:
     )
 
 
-def get_or_create_profile(session: Session) -> ProfileResponse:
-    profile = session.scalar(select(Profile).limit(1))
+def get_or_create_profile(session: Session, user_id: str) -> ProfileResponse:
+    """Get the user's profile, creating a default one if needed."""
+    profile = session.scalar(
+        select(Profile).where(Profile.user_id == user_id).limit(1)
+    )
     if profile is None:
         profile = Profile(
-            id=DEFAULT_PROFILE_ID,
+            id=generate_id("PRF"),
+            user_id=user_id,
             name="My Household",
             monthly_income=0,
             currency="INR",
-            household_members=2,
+            household_members=1,
         )
         session.add(profile)
         session.commit()
@@ -38,10 +41,13 @@ def get_or_create_profile(session: Session) -> ProfileResponse:
     return _build_profile_response(profile)
 
 
-def create_profile(session: Session, payload: ProfileCreate) -> ProfileResponse:
-    profile = session.scalar(select(Profile).limit(1))
+def create_profile(session: Session, payload: ProfileCreate, user_id: str) -> ProfileResponse:
+    """Create or update the user's profile."""
+    profile = session.scalar(
+        select(Profile).where(Profile.user_id == user_id).limit(1)
+    )
     if profile is None:
-        profile = Profile(id=DEFAULT_PROFILE_ID)
+        profile = Profile(id=generate_id("PRF"), user_id=user_id)
         session.add(profile)
 
     profile.name = payload.name.strip()
@@ -54,10 +60,13 @@ def create_profile(session: Session, payload: ProfileCreate) -> ProfileResponse:
     return _build_profile_response(profile)
 
 
-def update_profile(session: Session, payload: ProfileUpdate) -> ProfileResponse:
-    profile = session.scalar(select(Profile).limit(1))
+def update_profile(session: Session, payload: ProfileUpdate, user_id: str) -> ProfileResponse:
+    """Update the user's profile."""
+    profile = session.scalar(
+        select(Profile).where(Profile.user_id == user_id).limit(1)
+    )
     if profile is None:
-        profile = Profile(id=DEFAULT_PROFILE_ID)
+        profile = Profile(id=generate_id("PRF"), user_id=user_id)
         session.add(profile)
 
     profile.name = payload.name.strip()

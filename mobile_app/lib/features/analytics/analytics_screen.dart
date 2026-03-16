@@ -44,9 +44,20 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
   Future<void> _load() async {
     setState(() {
-      _loading = true;
+      _loading = _bundle == null;
       _error = null;
     });
+
+    if (_bundle == null) {
+      final cached = await widget.repository.loadAnalyticsDataFromCache();
+      if (cached != null && mounted) {
+        setState(() {
+          _bundle = cached;
+          _loading = false;
+        });
+      }
+    }
+
     try {
       final bundle = await widget.repository.loadAnalyticsData();
       if (!mounted) return;
@@ -56,10 +67,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       });
     } catch (error) {
       if (!mounted) return;
-      setState(() {
-        _error = error;
-        _loading = false;
-      });
+      if (_bundle == null) {
+        setState(() {
+          _error = error;
+          _loading = false;
+        });
+      }
     }
   }
 

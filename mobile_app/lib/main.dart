@@ -1,48 +1,85 @@
 import 'package:flutter/material.dart';
 
+import 'core/cache/cache_service.dart';
 import 'core/routes/app_router.dart';
 import 'core/services/notification_service.dart';
 import 'core/themes/app_theme.dart';
 import 'features/analytics/analytics_screen.dart';
+import 'features/auth/login_screen.dart';
 import 'features/budget/budget_screen.dart';
 import 'features/dashboard/dashboard_screen.dart';
 import 'features/profile/profile_screen.dart';
+import 'features/update/update_dialog.dart';
 import 'repositories/transaction_repository.dart';
 import 'services/analytics_service.dart';
 import 'services/api_service.dart';
+import 'services/auth_service.dart';
 import 'services/budget_service.dart';
 import 'services/profile_service.dart';
 import 'services/transaction_service.dart';
+import 'services/version_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await NotificationService.instance.initialize();
 
-  final apiService = ApiService();
-  final repository = TransactionRepository(
-    transactionService: TransactionService(apiService),
-    analyticsService: AnalyticsService(apiService),
-    budgetService: BudgetService(apiService),
-  );
-  final profileService = ProfileService(apiService);
+  final authService = AuthService();
 
-  runApp(
-    MoneyManagerApp(
-      repository: repository,
-      profileService: profileService,
-    ),
-  );
+  runApp(MoneyManagerApp(authService: authService));
 }
 
-class MoneyManagerApp extends StatelessWidget {
-  const MoneyManagerApp({
-    super.key,
-    required this.repository,
-    required this.profileService,
-  });
+class MoneyManagerApp extends StatefulWidget {
+  const MoneyManagerApp({super.key, required this.authService});
 
-  final TransactionRepository repository;
-  final ProfileService profileService;
+  final AuthService authService;
+
+  @override
+  State<MoneyManagerApp> createState() => _MoneyManagerAppState();
+}
+
+class _MoneyManagerAppState extends State<MoneyManagerApp> {
+  bool _loggedIn = false;
+  bool _checkingAuth = true;
+  String? _cachedToken;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkAuth();
+  }
+
+  Future<void> _checkAuth() async {
+    final loggedIn = await widget.authService.isLoggedIn();
+    if (loggedIn) {
+      _cachedToken = await widget.authService.getToken();
+    }
+    if (mounted) {
+      setState(() {
+        _loggedIn = loggedIn;
+        _checkingAuth = false;
+      });
+    }
+  }
+
+  void _onLoginSuccess() async {
+    _cachedToken = await widget.authService.getToken();
+    if (mounted) {
+      setState(() {
+        _loggedIn = true;
+      });
+    }
+  }
+
+  void _onLogout() async {
+    await widget.authService.signOut();
+    await CacheService.instance.clearAll();
+    _cachedToken = null;
+    if (mounted) {
+      setState(() {
+        _loggedIn = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -50,10 +87,36 @@ class MoneyManagerApp extends StatelessWidget {
       title: 'Money Manager',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme(),
-      home: AppShell(
-        repository: repository,
-        profileService: profileService,
-      ),
+      home: _checkingAuth
+          ? const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            )
+          : _loggedIn
+              ? _buildAppShell()
+              : LoginScreen(
+                  authService: widget.authService,
+                  onLoginSuccess: _onLoginSuccess,
+                ),
+    );
+  }
+
+  Widget _buildAppShell() {
+    final apiService = ApiService(
+      tokenProvider: () => _cachedToken,
+    );
+    final repository = TransactionRepository(
+      transactionService: TransactionService(apiService),
+      analyticsService: AnalyticsService(apiService),
+      budgetService: BudgetService(apiService),
+    );
+    final profileService = ProfileService(apiService);
+
+    return AppShell(
+      apiService: apiService,
+      repository: repository,
+      profileService: profileService,
+      authService: widget.authService,
+      onLogout: _onLogout,
     );
   }
 }
@@ -61,12 +124,18 @@ class MoneyManagerApp extends StatelessWidget {
 class AppShell extends StatefulWidget {
   const AppShell({
     super.key,
+    required this.apiService,
     required this.repository,
     required this.profileService,
+    required this.authService,
+    required this.onLogout,
   });
 
+  final ApiService apiService;
   final TransactionRepository repository;
   final ProfileService profileService;
+  final AuthService authService;
+  final VoidCallback onLogout;
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -75,6 +144,28 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int _currentIndex = 0;
   int _refreshToken = 0;
+  VersionCheckResult? _forceUpdateResult;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkForUpdates();
+  }
+
+  Future<void> _checkForUpdates() async {
+    final versionService = VersionService(widget.apiService);
+    final result = await versionService.checkForUpdate();
+    if (!mounted) return;
+
+    if (result.updateRequired) {
+      setState(() => _forceUpdateResult = result);
+    } else if (result.updateAvailable) {
+      showDialog(
+        context: context,
+        builder: (_) => UpdateAvailableDialog(result: result),
+      );
+    }
+  }
 
   Future<void> _openAddTransaction() async {
     final saved = await Navigator.of(context).push<bool?>(
@@ -110,6 +201,10 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    if (_forceUpdateResult != null) {
+      return UpdateRequiredScreen(result: _forceUpdateResult!);
+    }
+
     final screens = [
       DashboardScreen(
         repository: widget.repository,
@@ -134,7 +229,11 @@ class _AppShellState extends State<AppShell> {
           }
         },
       ),
-      ProfileScreen(profileService: widget.profileService),
+      ProfileScreen(
+        profileService: widget.profileService,
+        authService: widget.authService,
+        onLogout: widget.onLogout,
+      ),
     ];
 
     return Scaffold(

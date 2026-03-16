@@ -25,6 +25,7 @@ def _month_window(month: int, year: int) -> tuple[date, date]:
 
 
 def _build_budget_response(budget: Budget, spent_amount: int) -> BudgetResponse:
+    """Build a BudgetResponse with calculated utilization and status."""
     remaining = max(budget.monthly_limit - spent_amount, 0)
     utilization = (
         round((spent_amount / budget.monthly_limit) * 100, 1)
@@ -54,8 +55,12 @@ def _build_budget_response(budget: Budget, spent_amount: int) -> BudgetResponse:
 
 
 def refresh_budget_history(
-    session: Session, month: int | None = None, year: int | None = None
+    session: Session,
+    user_id: str,
+    month: int | None = None,
+    year: int | None = None,
 ) -> None:
+    """Recalculate budget history for the user's budgets."""
     from app.crud.transaction_crud import fetch_transactions_for_range
 
     today = _utc_today()
@@ -64,9 +69,12 @@ def refresh_budget_history(
     start, end = _month_window(target_month, target_year)
 
     budgets = session.scalars(
-        select(Budget).options(selectinload(Budget.category)).order_by(Budget.created_at.asc())
+        select(Budget)
+        .where(Budget.user_id == user_id)
+        .options(selectinload(Budget.category))
+        .order_by(Budget.created_at.asc())
     ).all()
-    transactions = fetch_transactions_for_range(session, start, end)
+    transactions = fetch_transactions_for_range(session, start, end, user_id)
 
     spent_by_category: dict[str, int] = {}
     for transaction in transactions:
@@ -77,8 +85,11 @@ def refresh_budget_history(
 
     existing_history = session.scalars(
         select(BudgetHistory)
-        .where(BudgetHistory.month == target_month)
-        .where(BudgetHistory.year == target_year)
+        .where(
+            BudgetHistory.user_id == user_id,
+            BudgetHistory.month == target_month,
+            BudgetHistory.year == target_year,
+        )
     ).all()
     history_map = {entry.category_id: entry for entry in existing_history}
 
@@ -89,6 +100,7 @@ def refresh_budget_history(
             session.add(
                 BudgetHistory(
                     id=generate_id("BGH"),
+                    user_id=user_id,
                     category_id=budget.category_id,
                     spent_amount=spent_amount,
                     month=target_month,
@@ -102,22 +114,30 @@ def refresh_budget_history(
 
 
 def list_budgets(
-    session: Session, month: int | None = None, year: int | None = None
+    session: Session,
+    user_id: str,
+    month: int | None = None,
+    year: int | None = None,
 ) -> list[BudgetResponse]:
-    refresh_budget_history(session, month=month, year=year)
+    """List all budgets for the user with current spent amounts."""
+    refresh_budget_history(session, user_id, month=month, year=year)
 
     today = _utc_today()
     target_month = month or today.month
     target_year = year or today.year
     history_entries = session.scalars(
         select(BudgetHistory)
-        .where(BudgetHistory.month == target_month)
-        .where(BudgetHistory.year == target_year)
+        .where(
+            BudgetHistory.user_id == user_id,
+            BudgetHistory.month == target_month,
+            BudgetHistory.year == target_year,
+        )
     ).all()
     history_map = {entry.category_id: entry.spent_amount for entry in history_entries}
 
     budgets = session.scalars(
         select(Budget)
+        .where(Budget.user_id == user_id)
         .options(selectinload(Budget.category))
         .order_by(Budget.created_at.asc())
     ).all()
@@ -127,18 +147,30 @@ def list_budgets(
     ]
 
 
-def upsert_budget(session: Session, payload: BudgetCreate) -> BudgetResponse:
-    category = session.get(Category, payload.category_id)
+def upsert_budget(
+    session: Session, payload: BudgetCreate, user_id: str
+) -> BudgetResponse:
+    """Create or update a budget for the given user."""
+    category = session.scalar(
+        select(Category)
+        .where(Category.id == payload.category_id, Category.user_id == user_id)
+    )
     if category is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Category '{payload.category_id}' was not found.",
         )
 
-    budget = session.scalar(select(Budget).where(Budget.category_id == payload.category_id))
+    budget = session.scalar(
+        select(Budget).where(
+            Budget.user_id == user_id,
+            Budget.category_id == payload.category_id,
+        )
+    )
     if budget is None:
         budget = Budget(
             id=generate_id("BGT"),
+            user_id=user_id,
             category_id=payload.category_id,
             monthly_limit=payload.monthly_limit,
             created_at=datetime.utcnow(),
@@ -149,7 +181,7 @@ def upsert_budget(session: Session, payload: BudgetCreate) -> BudgetResponse:
 
     session.commit()
     session.refresh(budget)
-    refresh_budget_history(session)
+    refresh_budget_history(session, user_id)
 
     budget = session.scalar(
         select(Budget)
@@ -159,8 +191,11 @@ def upsert_budget(session: Session, payload: BudgetCreate) -> BudgetResponse:
     today = _utc_today()
     spent_amount = session.scalar(
         select(BudgetHistory.spent_amount)
-        .where(BudgetHistory.category_id == budget.category_id)
-        .where(BudgetHistory.month == today.month)
-        .where(BudgetHistory.year == today.year)
+        .where(
+            BudgetHistory.user_id == user_id,
+            BudgetHistory.category_id == budget.category_id,
+            BudgetHistory.month == today.month,
+            BudgetHistory.year == today.year,
+        )
     ) or 0
     return _build_budget_response(budget, spent_amount)

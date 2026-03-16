@@ -12,9 +12,12 @@ import '../models/profile_model.dart';
 import '../models/transaction_model.dart';
 
 class ApiService {
-  ApiService({http.Client? client}) : _client = client ?? http.Client();
+  ApiService({http.Client? client, String? Function()? tokenProvider})
+      : _client = client ?? http.Client(),
+        _tokenProvider = tokenProvider;
 
   final http.Client _client;
+  final String? Function()? _tokenProvider;
 
   Future<List<TransactionModel>> getTransactions() async {
     final json = await getJson('/transactions');
@@ -162,30 +165,56 @@ class ApiService {
     return _decode(response);
   }
 
-  Future<http.Response> _runRequest(
-    Future<http.Response> Function() request,
-    Uri uri,
-  ) async {
-    try {
-      return await request();
-    } on TimeoutException {
+  Future<void> deleteRequest(String path) async {
+    final uri = _buildUri(path);
+    final response = await _runRequest(
+      () => _client
+          .delete(uri, headers: _headers)
+          .timeout(const Duration(seconds: 12)),
+      uri,
+    );
+    if (response.statusCode >= 300) {
       throw ApiException(
-        statusCode: 408,
-        message:
-            'The Money Manager backend at $uri timed out. Check that FastAPI is running and your phone can reach the laptop on the same network.',
-      );
-    } on SocketException {
-      throw ApiException(
-        statusCode: 503,
-        message:
-            'Unable to reach the Money Manager backend at $uri. Verify the API base URL, keep the phone and laptop on the same network, and confirm FastAPI is running.',
-      );
-    } on http.ClientException catch (error) {
-      throw ApiException(
-        statusCode: 503,
-        message: 'Network request failed for $uri: ${error.message}',
+        statusCode: response.statusCode,
+        message: response.body.isEmpty ? 'Delete failed.' : response.body,
       );
     }
+  }
+
+  Future<http.Response> _runRequest(
+    Future<http.Response> Function() request,
+    Uri uri, {
+    int retries = 1,
+  }) async {
+    for (var attempt = 0; attempt <= retries; attempt++) {
+      try {
+        return await request();
+      } on TimeoutException {
+        if (attempt < retries) continue;
+        throw ApiException(
+          statusCode: 408,
+          message:
+              'The Money Manager backend at $uri timed out. Check that FastAPI is running and your phone can reach the laptop on the same network.',
+        );
+      } on SocketException {
+        if (attempt < retries) {
+          await Future.delayed(Duration(milliseconds: 500 * (attempt + 1)));
+          continue;
+        }
+        throw ApiException(
+          statusCode: 503,
+          message:
+              'Unable to reach the Money Manager backend at $uri. Verify the API base URL, keep the phone and laptop on the same network, and confirm FastAPI is running.',
+        );
+      } on http.ClientException catch (error) {
+        if (attempt < retries) continue;
+        throw ApiException(
+          statusCode: 503,
+          message: 'Network request failed for $uri: ${error.message}',
+        );
+      }
+    }
+    throw ApiException(statusCode: 503, message: 'Request failed after retries.');
   }
 
   Uri _buildUri(String path, {Map<String, String>? queryParameters}) {
@@ -228,10 +257,17 @@ class ApiService {
     return list.map((item) => fromJson(item as Map<String, dynamic>)).toList();
   }
 
-  Map<String, String> get _headers => const {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      };
+  Map<String, String> get _headers {
+    final headers = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+    final token = _tokenProvider?.call();
+    if (token != null && token.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $token';
+    }
+    return headers;
+  }
 }
 
 class ApiException implements Exception {

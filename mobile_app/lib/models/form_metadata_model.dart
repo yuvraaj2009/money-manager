@@ -19,6 +19,13 @@
       icon: json['icon'] as String,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'color': color,
+        'icon': icon,
+      };
 }
 
 class AccountOptionModel {
@@ -42,6 +49,13 @@ class AccountOptionModel {
       maskedNumber: json['masked_number'] as String,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'type': type,
+        'masked_number': maskedNumber,
+      };
 }
 
 class TransactionFormMetadataModel {
@@ -68,4 +82,10 @@ class TransactionFormMetadataModel {
           .toList(),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'categories': categories.map((c) => c.toJson()).toList(),
+        'accounts': accounts.map((a) => a.toJson()).toList(),
+        'payment_methods': paymentMethods,
+      };
 }

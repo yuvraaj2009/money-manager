@@ -1,3 +1,9 @@
+databases:
+  - name: money-manager-db
+    plan: free
+    databaseName: money_manager
+    user: money_manager_user
+
 services:
   - type: web
     name: money-manager-api
@@ -12,4 +18,10 @@ services:
       - key: API_VERSION
         value: 1.0.0
       - key: DATABASE_URL
+        fromDatabase:
+          name: money-manager-db
+          property: connectionString
+      - key: GOOGLE_CLIENT_ID
         sync: false
+      - key: JWT_SECRET
+        generateValue: true

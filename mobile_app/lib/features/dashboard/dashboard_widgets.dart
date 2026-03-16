@@ -89,13 +89,17 @@ class DashboardHeroCard extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 12),
-                Text(
-                  AppFormatters.currencyFromPaise(balance),
-                  style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                        color: Colors.white,
-                        fontSize: 48,
-                        height: 1,
-                      ),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    AppFormatters.currencyFromPaise(balance),
+                    style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                          color: Colors.white,
+                          fontSize: 48,
+                          height: 1,
+                        ),
+                  ),
                 ),
                 const SizedBox(height: 30),
                 Row(
@@ -151,6 +155,8 @@ class _MetricBlock extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   color: Colors.white,
                   fontWeight: FontWeight.w800,
@@ -206,6 +212,8 @@ class QuickInsightCard extends StatelessWidget {
           const SizedBox(height: 10),
           Text(
             insight,
+            maxLines: 4,
+            overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                   color: AppColors.textSecondary,
                   height: 1.45,

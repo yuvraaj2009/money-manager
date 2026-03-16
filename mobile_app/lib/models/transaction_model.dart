@@ -69,4 +69,25 @@
       receiptUrl: json['receipt_url'] as String?,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'amount': amount,
+        'amount_rupees': amountRupees,
+        'flow': flow,
+        'category_id': categoryId,
+        'category_name': categoryName,
+        'category_color': categoryColor,
+        'category_icon': categoryIcon,
+        'description': description,
+        'merchant_name': merchantName,
+        'payment_method': paymentMethod,
+        'account_id': accountId,
+        'account_name': accountName,
+        'account_masked_number': accountMaskedNumber,
+        'date': date.toIso8601String(),
+        'created_at': createdAt.toIso8601String(),
+        'reference_id': referenceId,
+        'receipt_url': receiptUrl,
+      };
 }

@@ -53,9 +53,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _load() async {
     setState(() {
-      _loading = true;
+      _loading = _bundle == null;
       _error = null;
     });
+
+    // Show cached data instantly while network loads
+    if (_bundle == null) {
+      final cached = await widget.repository.loadDashboardDataFromCache();
+      if (cached != null && mounted) {
+        setState(() {
+          _bundle = cached;
+          _loading = false;
+        });
+      }
+    }
+
     try {
       final bundle = await widget.repository.loadDashboardData();
       if (!mounted) return;
@@ -70,10 +82,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
     } catch (error) {
       if (!mounted) return;
-      setState(() {
-        _error = error;
-        _loading = false;
-      });
+      // Only show error if we have no data at all
+      if (_bundle == null) {
+        setState(() {
+          _error = error;
+          _loading = false;
+        });
+      }
     }
   }
 

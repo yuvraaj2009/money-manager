@@ -15,7 +15,7 @@ class AppConfig {
   // is running FastAPI on the same Wi-Fi or LAN as the phone.
   static const String localNetworkBaseUrl = 'http://192.168.0.101:8000';
 
-  static const String productionBaseUrl = 'https://api.example.com';
+  static const String productionBaseUrl = 'https://money-manager-a7p9.onrender.com';
 
   static const String _environmentName = String.fromEnvironment(
     'API_ENV',
