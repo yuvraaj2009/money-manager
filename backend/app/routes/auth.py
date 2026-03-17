@@ -50,12 +50,8 @@ def google_login(payload: GoogleLoginRequest, session: Session = Depends(get_db)
         session.commit()
         session.refresh(user)
         # Seed default categories, accounts, budgets, and profile for the new user
-        try:
-            seed_user_defaults(session, user.id)
-            logger.info("Seeded defaults for new user %s (%s)", user.id, user.email)
-        except Exception:
-            logger.exception("Failed to seed defaults for user %s — user created but data may be incomplete", user.id)
-        logger.info("Created new user %s (%s)", user.id, user.email)
+        seed_user_defaults(session, user.id)
+        logger.info("Created new user %s (%s) with seeded defaults", user.id, user.email)
     else:
         # Update name / picture if changed on the Google side
         user.name = google_info["name"]

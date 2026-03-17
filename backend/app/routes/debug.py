@@ -106,43 +106,84 @@ def debug_user(
     }
 
     # Step 4: Does the user have seeded data?
-    categories = session.scalars(select(Category).where(Category.user_id == user_id)).all()
-    accounts = session.scalars(select(Account).where(Account.user_id == user_id)).all()
-    budgets = session.scalars(select(Budget).where(Budget.user_id == user_id)).all()
-    profile = session.scalar(select(Profile).where(Profile.user_id == user_id).limit(1))
-    transactions = session.scalars(select(Transaction).where(Transaction.user_id == user_id)).all()
+    counts = _get_user_data_counts(session, user_id)
+    result["step_4_user_has_data"] = counts["categories"] > 0
+    result["data_counts"] = counts
 
-    result["step_4_user_has_data"] = len(categories) > 0
-    result["data_counts"] = {
-        "categories": len(categories),
-        "accounts": len(accounts),
-        "budgets": len(budgets),
-        "transactions": len(transactions),
-        "has_profile": profile is not None,
-    }
-
-    if len(categories) == 0:
-        result["warning"] = "User has no categories — seed_user_defaults may have failed during signup."
+    if counts["categories"] == 0:
+        result["warning"] = "User has no categories — use POST /debug/fix-user/{user_id} to fix."
 
     return result
 
 
-@router.post("/reseed/{user_id}")
-def debug_reseed(user_id: str, session: Session = Depends(get_db)):
-    """Re-run seed_user_defaults for a user who is missing default data."""
+def _get_user_data_counts(session: Session, user_id: str) -> dict:
+    """Return counts of all user data."""
+    return {
+        "categories": len(session.scalars(select(Category).where(Category.user_id == user_id)).all()),
+        "accounts": len(session.scalars(select(Account).where(Account.user_id == user_id)).all()),
+        "budgets": len(session.scalars(select(Budget).where(Budget.user_id == user_id)).all()),
+        "has_profile": session.scalar(select(Profile).where(Profile.user_id == user_id).limit(1)) is not None,
+        "transactions": len(session.scalars(select(Transaction).where(Transaction.user_id == user_id)).all()),
+    }
+
+
+@router.post("/fix-user/{user_id}")
+def debug_fix_user(user_id: str, session: Session = Depends(get_db)):
+    """Emergency fix: seed default data for a user who is missing it."""
     user = session.get(User, user_id)
     if user is None:
-        return {"error": f"User {user_id} not found"}
+        all_users = session.scalars(select(User)).all()
+        return {
+            "error": f"User '{user_id}' not found in database",
+            "existing_users": [{"id": u.id, "email": u.email, "name": u.name} for u in all_users],
+        }
 
-    # Check if already has data
-    categories = session.scalars(select(Category).where(Category.user_id == user_id)).all()
-    if len(categories) > 0:
-        return {"message": f"User already has {len(categories)} categories, skipping reseed"}
+    before_counts = _get_user_data_counts(session, user_id)
+
+    if before_counts["categories"] > 0:
+        return {
+            "message": f"User {user_id} already has data — no fix needed",
+            "user": {"id": user.id, "email": user.email, "name": user.name},
+            "data_counts": before_counts,
+        }
 
     from app.database.seed_data import seed_user_defaults
     try:
         seed_user_defaults(session, user_id)
-        return {"message": f"Successfully reseeded defaults for user {user_id}"}
     except Exception as e:
-        logger.exception("Reseed failed for user %s", user_id)
-        return {"error": f"Reseed failed: {type(e).__name__}: {e}"}
+        logger.exception("fix-user failed for %s", user_id)
+        return {
+            "error": f"Seeding failed: {type(e).__name__}: {e}",
+            "user": {"id": user.id, "email": user.email},
+        }
+
+    after_counts = _get_user_data_counts(session, user_id)
+    return {
+        "message": f"Successfully seeded defaults for user {user_id}",
+        "user": {"id": user.id, "email": user.email, "name": user.name},
+        "before": before_counts,
+        "after": after_counts,
+    }
+
+
+@router.post("/fix-all-users")
+def debug_fix_all_users(session: Session = Depends(get_db)):
+    """Emergency fix: seed default data for ALL users who are missing it."""
+    all_users = session.scalars(select(User)).all()
+    results = []
+    from app.database.seed_data import ensure_user_defaults
+    for user in all_users:
+        try:
+            seeded = ensure_user_defaults(session, user.id)
+            results.append({
+                "user_id": user.id,
+                "email": user.email,
+                "seeded": seeded,
+            })
+        except Exception as e:
+            results.append({
+                "user_id": user.id,
+                "email": user.email,
+                "error": f"{type(e).__name__}: {e}",
+            })
+    return {"users_processed": len(results), "results": results}

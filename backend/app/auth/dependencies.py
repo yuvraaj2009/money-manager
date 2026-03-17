@@ -51,4 +51,13 @@ def get_current_user(
             detail="User account not found.",
         )
     logger.info("Auth: authenticated user %s (%s)", user.id, user.email)
+
+    # Safety net: if user exists but seed data is missing, auto-seed now
+    from app.database.seed_data import ensure_user_defaults
+    try:
+        if ensure_user_defaults(session, user_id):
+            logger.info("Auth: auto-seeded missing defaults for user %s", user_id)
+    except Exception:
+        logger.exception("Auth: auto-seed failed for user %s (non-fatal)", user_id)
+
     return user
