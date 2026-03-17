@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
@@ -18,6 +20,7 @@ from app.schemas.transaction_schema import (
     TransactionResponse,
 )
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Transactions"])
 
 
