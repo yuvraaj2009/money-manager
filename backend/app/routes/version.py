@@ -11,7 +11,7 @@ from app.schemas.version_schema import VersionResponse
 router = APIRouter(tags=["Version"])
 
 settings = get_settings()
-_STATIC_APK_DIR = Path(__file__).resolve().parent.parent.parent / "static" / "apk"
+_STATIC_APK_DIR = Path.cwd() / "static" / "apk"
 
 
 @router.get("/version", response_model=VersionResponse)
