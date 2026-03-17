@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
@@ -9,6 +11,7 @@ from app.database.database import get_db
 from app.database.models import User
 from app.schemas.profile_schema import ProfileCreate, ProfileResponse, ProfileUpdate
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Profile"])
 
 
@@ -17,7 +20,14 @@ def get_profile(
     session: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return get_or_create_profile(session, current_user.id)
+    logger.info("GET /profile for user %s", current_user.id)
+    try:
+        result = get_or_create_profile(session, current_user.id)
+        logger.info("GET /profile success for user %s", current_user.id)
+        return result
+    except Exception:
+        logger.exception("GET /profile failed for user %s", current_user.id)
+        raise
 
 
 @router.post("/profile", response_model=ProfileResponse, status_code=status.HTTP_201_CREATED)
