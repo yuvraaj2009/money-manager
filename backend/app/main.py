@@ -38,8 +38,19 @@ def _run_migrations() -> None:
     logger.info("Database migrations applied successfully.")
 
 
+def _check_config() -> None:
+    """Log warnings for missing or insecure configuration."""
+    if settings.jwt_secret == "change-me-in-production":
+        logger.warning("⚠️  JWT_SECRET is using the default value! Set JWT_SECRET env var in production.")
+    if not settings.google_client_id:
+        logger.warning("⚠️  GOOGLE_CLIENT_ID is not set! Google Sign-In will fail.")
+    logger.info("Config: environment=%s, db=%s..., google_client_id_set=%s",
+                settings.environment, settings.database_url[:30], bool(settings.google_client_id))
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    _check_config()
     _run_migrations()
     with SessionLocal() as session:
         seed_default_data(
@@ -48,6 +59,7 @@ async def lifespan(_: FastAPI):
             include_profile=True,
             include_demo_transactions=settings.seed_demo_data,
         )
+    logger.info("Startup complete — app ready to serve requests.")
     yield
 
 

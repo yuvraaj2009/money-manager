@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 
 from sqlalchemy import select
@@ -7,6 +8,8 @@ from sqlalchemy.orm import Session
 
 from app.database.models import Account, Budget, Category, Profile, Transaction
 from app.utils.id_generator import generate_id, generate_reference_id
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_CATEGORIES = [
     {"name": "Housing", "color": "#0F52FF", "icon": "home"},
@@ -39,17 +42,34 @@ DEFAULT_BUDGET_LIMITS = {
 }
 
 
+def ensure_user_defaults(session: Session, user_id: str) -> bool:
+    """Ensure default data exists for the user. Returns True if seeding was needed."""
+    existing = session.scalars(
+        select(Category).where(Category.user_id == user_id).limit(1)
+    ).first()
+    if existing is not None:
+        return False
+    logger.info("User %s has no categories — seeding defaults now", user_id)
+    seed_user_defaults(session, user_id)
+    return True
+
+
 def seed_user_defaults(session: Session, user_id: str) -> None:
     """Seed default categories, accounts, budgets, and profile for a new user."""
+    logger.info("Seeding defaults for user %s", user_id)
+
     cat_map: dict[str, str] = {}
     for cat_data in DEFAULT_CATEGORIES:
         cat_id = generate_id("CAT")
         cat_map[cat_data["name"]] = cat_id
         session.add(Category(id=cat_id, user_id=user_id, **cat_data))
+    logger.info("  Created %d categories for user %s", len(DEFAULT_CATEGORIES), user_id)
 
     for acc_data in DEFAULT_ACCOUNTS:
         session.add(Account(id=generate_id("ACC"), user_id=user_id, **acc_data))
+    logger.info("  Created %d accounts for user %s", len(DEFAULT_ACCOUNTS), user_id)
 
+    budget_count = 0
     for cat_name, limit in DEFAULT_BUDGET_LIMITS.items():
         cat_id = cat_map.get(cat_name)
         if cat_id:
@@ -61,6 +81,8 @@ def seed_user_defaults(session: Session, user_id: str) -> None:
                     monthly_limit=limit,
                 )
             )
+            budget_count += 1
+    logger.info("  Created %d budgets for user %s", budget_count, user_id)
 
     session.add(
         Profile(
@@ -72,8 +94,10 @@ def seed_user_defaults(session: Session, user_id: str) -> None:
             household_members=1,
         )
     )
+    logger.info("  Created profile for user %s", user_id)
 
     session.commit()
+    logger.info("Seeding complete for user %s — all committed", user_id)
 
 
 def seed_database(
